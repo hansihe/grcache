@@ -1,0 +1,22 @@
+
+Å
+grcache/options.proto google/protobuf/descriptor.proto"™
+	EvictSpec
+event (	ReventE
+evict_key_field (2.EvictSpec.EvictKeyFieldEntryRevictKeyField@
+EvictKeyFieldEntry
+key (	Rkey
+value (	Rvalue:8"Ó
+GrcacheMethodOptions
+	cache_ttl (RcacheTtl%
+evict_by (2
+.EvictSpecRevictByP
+evict_key_field (2(.GrcacheMethodOptions.EvictKeyFieldEntryRevictKeyField@
+EvictKeyFieldEntry
+key (	Rkey
+value (	Rvalue:8"/
+A*
+fetch_provider_id (RfetchProviderId2
+Foo
+Bar.A.A:Y
+grcache.google.protobuf.MethodOptionsû… (2.GrcacheMethodOptionsBàRgrcacheàbproto3

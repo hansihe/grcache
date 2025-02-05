@@ -1,0 +1,16 @@
+[package]
+name = "grcache-cli"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+clap = { version = "4.5.23", features = ["derive"] }
+protobuf = "3.7.1"
+grcache-shared = { path = "../grcache-shared" }
+serde_json = "1.0.135"
+serde = "1.0.217"
+serde_yaml = "0.9.34"
+kube = { version = "0.98.0", features = ["runtime"] }
+
+[build-dependencies]
+protobuf-codegen = "3.7.1"

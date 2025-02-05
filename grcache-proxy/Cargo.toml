@@ -1,0 +1,39 @@
+[package]
+name = "grcache-proxy"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+grcache-shared = { path = "../grcache-shared" }
+
+async-trait = "0.1.85"
+env_logger = "0.11.6"
+
+pingora = { version = "0.4.0", features = ["cache"] }
+pingora-core = "0.4.0"
+pingora-proxy = "0.4.0"
+pingora-load-balancing = "0.4.0"
+pingora-ketama = "0.4.0"
+
+kube = { version = "0.98.0", features = ["runtime", "derive"] }
+kube-derive = { version = "0.98.0" }
+k8s-openapi = { version = "0.24.0", features = ["latest"] }
+tokio = "1.42.0"
+schemars = "0.8.21"
+serde_json = "1.0.135"
+serde = "1.0.217"
+futures = "0.3.31"
+log = "0.4.25"
+async-stream = "0.3.6"
+tokio-retry = "0.3.0"
+hickory-resolver = { version = "0.24.2", features = ["tokio"] }
+memcache = "0.18.0"
+TinyUFO = "0.4.0"
+papaya = "0.1.8"
+anyhow = "1.0.95"
+bytes = { version = "1.10.0", features = ["serde"] }
+url = "2.5.4"
+bb8 = "0.9.0"
+bb8-redis = "0.20.0"
+redis-macros = { version = "0.5.0", default-features = false, features = ["macros"] }
+bincode = "1.3.3"

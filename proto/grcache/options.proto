@@ -1,0 +1,102 @@
+syntax = "proto3";
+
+import "google/protobuf/descriptor.proto";
+
+// extend google.protobuf.ServiceOptions {
+//   optional string my_option = 58526;
+// }
+
+message EvictSpec {
+    // The name of an eviction event to evict by.
+    // Eviction events are specified in the `grcache` configuration.
+    // Names may be anything at all, but convention is to use `:` for
+    // namespacing.
+    // Example: `cdc:sales:completed`
+    string event = 1;
+
+    // For an explicit cache eviction to occur, the caching system
+    // needs to know the full key of the cache entries.
+    // This means that a mapping has to be done from every field in
+    // the request proto message to values the chosen eviction strategy
+    // knows about.
+    //
+    // By default, fields in the root of the request message are mapped
+    // directly to the same named argument to the eviction strategy.
+    // If this suffices, `evict_key_field` does not need to be provided
+    // at all.
+    //
+    // However, if naming differs, one or more `evict_key_field`s can be
+    // provided to specify a mapping from fields in the request message
+    // to eviction strategy arg names.
+    //
+    // ## Key name mapping lookup hierarchy
+    // When mapping fields from the request message, the following hierarchy
+    // is used:
+    // * TODO not implemented: Lookup is attempted the options set for the `message`
+    // * If not found, `rpc` options is checked
+    // * If not found and if in the root of the message (not nested), then
+    //   the name of the field in the request message is used directly
+    // * If the field is in a nested proto message, then an error is raised
+    //
+    // ## Strategy validation
+    // Eviction strategies are defined in the configuration files for `grcache`.
+    // You can perform a validation step with `grcache-cli`, which will print
+    // errors if the fields defined for an eviction strategy does not match
+    // up with the fields the strategy provides.
+    map<string, string> evict_key_field = 2;
+}
+
+message GrcacheMethodOptions {
+    // When set to a non zero value, will enable caching for this
+    // RPC method with the given TTL in seconds.
+    // This will cache this RPC call, but only for the given TTL.
+    //
+    // Even if set to a large value, a cached entry may be evicted
+    // for any number of reasons other than the TTL. The TTL is simply
+    // a guaranteed upper bound on cache duration.
+    //
+    // Note: Default value for fields in proto is 0, caching is
+    // disabled by default.
+    int32 cache_ttl = 1;
+
+    // If present, specifies a field which will be used for request
+    // stickiness. Requests where the values in the keys are idential will
+    // be directed to the same upstream.
+    //
+    // If several `hash_on` fields are specified, they will all be used
+    // for stickiness hash.
+    //
+    // If no `hash_on` is specified, no stickiness guarantees are made.
+    repeated string hash_on = 2;
+
+    // // A method may declare that it wishes to be explicitly evicted by one
+    // // or many eviction events. Eviction events themselves are declared in
+    // // the `grcache` configuration.
+    // // See documentation in `EvictSpec` for more information.
+    // repeated EvictSpec evict_by = 3;
+
+    // // See `evict_key_field` in `EvictSpec`.
+    // map<string, string> evict_key_field = 4;
+}
+
+extend google.protobuf.MethodOptions {
+  optional GrcacheMethodOptions grcache = 58526
+    [retention = RETENTION_SOURCE];
+}
+
+message A {
+    int32 fetch_provider_id = 1;
+}
+
+service Foo {
+    rpc Bar(A) returns (A) {
+        option (grcache) = {
+            cache_ttl: 3600 // 1 hour
+            hash_on: "fetch_provider_id"
+            // evict_by: {
+            //     event: "explicit:a_changed"
+            // }
+            // evict_key_field { key: "fetch_provider_id" value: "provider_id" }
+        };
+    };
+}

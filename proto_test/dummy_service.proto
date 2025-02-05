@@ -1,0 +1,31 @@
+syntax = "proto3";
+
+import "grcache/options.proto";
+
+package example;
+
+service ExampleService {
+  rpc GetData (GetDataRequest) returns (GetDataResponse) {
+    option (grcache) = {
+      cache_ttl: 3600 // 1 hour
+    };
+  }
+  rpc SaveData (SaveDataRequest) returns (SaveDataResponse);
+}
+
+message GetDataRequest {
+  string id = 1;
+}
+
+message GetDataResponse {
+  string data = 1;
+}
+
+message SaveDataRequest {
+  string id = 1;
+  string data = 2;
+}
+
+message SaveDataResponse {
+  bool success = 1;
+}

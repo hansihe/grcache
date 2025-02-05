@@ -1,0 +1,55 @@
+kubernetes:
+  # If true, will enable kubernetes integration.
+  # This will:
+  # * Load protobuf descriptors from instances of the
+  #   `GrcacheProtoDescriptorSet` CRD.
+  # * Load model from instances of the
+  #   `GrcacheModel` CRD.
+  enable: true
+
+  # Setting this will enable multiple grcache clusters within
+  # a single k8s namespace. grcache instances will only pick
+  # up k8s resources with the same clusterName set on them.
+  clusterName: prod
+
+  # Internal option, mainly for development.
+  # Will allow inline resource declarations while k8s
+  # integration is active.
+  internalAllowInlineResources: true
+
+# Used to declare k8s bucket configs.
+# Only used to store protobuf descriptors for now.
+buckets:
+  descriptors-s3-bucket:
+    # {prefix}NAME
+    # {prefix}ENDPOINT
+    # {prefix}KEY_ID
+    # {prefix}KEY_SECRET
+    source: env
+    prefix: "DESCRIPTORS_BUCKET_"
+
+# Used to declare kafka bucket configs.
+# Can be used to declare `evictionEvent`s.
+kafkaBrokers:
+  main:
+    # {prefix}BOOTSTRAP_SERVERS - comma separated
+    # {prefix}SECURITY_PROTOCOL
+    source: env
+    prefix: "KAFKA_"
+
+protobufDescriptorsSets:
+  - source: file
+    path: "/path/to/descriptor_set.binarypb"
+  - source: bucket
+    name: descriptors-s3-bucket
+    hash: a123adsadas
+
+evictionEvents:
+  # Explicit eviction events are triggered by an RPC call.
+  provider_permissions_changed:
+    kind: explicit
+    fields:
+      provider_id: integer
+
+  employee_connection_changed:
+    kind: cdc_kafka_debezium
