@@ -1,3 +1,18 @@
+# Grcache
+Grcache is a gRPC caching solution built on Cloudflares `pingora`.
+
+Implementing caching in a generic way for gRPC comes with a variety of
+challenges which this project attempts to solve.
+
+At it's core, grcache is a reverse proxy (like nginx) with a set of
+special features enabling it to cache gRPC calls in a customizable way.
+
+Caching options are declared inline in your gRPC `protobuf` service files
+(see `proto/grcache/options.proto`). The `FileDescriptorSet` which `protoc`
+spits out are then loaded into `grcache`, which enables it to cache and
+handle requests according to policies you declare. Caching options can
+also be overridden on a per request basis if needed.
+
 ## Components
 
 ### Runtime
