@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use clap::Parser;
 use pingora::{apps::HttpServerOptions, services::background::GenBackgroundService};
 use pingora_core::{prelude::Opt, server::Server};
 
@@ -19,6 +20,10 @@ struct Args {
 
 fn main() {
     env_logger::init();
+
+    let args = Args::parse();
+
+    //let config = grcache_shared::
 
     let opt = Opt::default();
     //let opt = Opt::parse_args();
