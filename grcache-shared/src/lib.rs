@@ -16,6 +16,10 @@ pub mod field_ref;
 
 pub mod resource_change;
 
+pub mod proto;
+
+pub use protobuf::MessageDyn;
+
 pub mod protos {
     include!(concat!(env!("OUT_DIR"), "/generated/mod.rs"));
 }

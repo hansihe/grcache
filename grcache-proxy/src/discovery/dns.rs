@@ -1,6 +1,7 @@
 use std::{
     collections::{BTreeSet, HashMap},
     sync::{Arc, Mutex, Weak},
+    time::Instant,
 };
 
 use hickory_resolver::TokioAsyncResolver;
@@ -9,15 +10,14 @@ use pingora::{
     services::background::BackgroundService,
 };
 use pingora_load_balancing::{
-    discovery::ServiceDiscovery, prelude::RoundRobin, selection::Consistent, Backend, Backends,
-    Extensions, LoadBalancer,
+    prelude::RoundRobin, selection::Consistent, Backend, Extensions, LoadBalancer,
 };
 use tokio::sync::{
     mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender},
     watch,
 };
 
-use super::ServiceBackendsHandle;
+use super::{ServiceBackendsHandle, WatchServiceDiscovery};
 
 enum Command {
     StartDiscoveryLoop {
@@ -64,16 +64,12 @@ impl Handle {
             let (ready_send, ready_recv) = watch::channel(false);
             let (backends_sender, backends_receiver) = watch::channel(BTreeSet::new());
 
-            let discovery = Box::new(DNSServiceDiscovery {
-                host_port: host_port.clone(),
-                backends: backends_receiver.clone(),
-                ready: ready_recv.clone(),
-            });
+            let discovery = WatchServiceDiscovery::new(backends_receiver.clone());
 
             let load_balancer_rr: LoadBalancer<RoundRobin> =
-                LoadBalancer::from_backends(Backends::new(discovery.clone()));
+                LoadBalancer::from_backends(discovery.clone().into_backends());
             let load_balancer_cons: LoadBalancer<Consistent> =
-                LoadBalancer::from_backends(Backends::new(discovery));
+                LoadBalancer::from_backends(discovery.clone().into_backends());
 
             let data = Arc::new(ServiceBackendsHandle {
                 backends: backends_receiver,
@@ -125,6 +121,17 @@ async fn dns_discovery_loop(
     ready_send: watch::Sender<bool>,
     host_port: (String, u16),
 ) {
+    log::info!(
+        "started DNS discovery loop for `{}:{}`",
+        host_port.0,
+        host_port.1
+    );
+
+    let handle_weak = {
+        let state = handle.0.state.lock().unwrap();
+        state.service_backends.get(&host_port).unwrap().clone()
+    };
+
     loop {
         // TODO ready timeout?
         // This can also be done in receiver.
@@ -138,6 +145,12 @@ async fn dns_discovery_loop(
                     host_port.0,
                     host_port.1
                 );
+
+                if handle_weak.strong_count() == 0 {
+                    // All references to lb gone, we stop refresh loop.
+                    break;
+                }
+
                 // TODO backoff?
                 tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
                 continue;
@@ -148,35 +161,56 @@ async fn dns_discovery_loop(
         for addr in response.iter() {
             backends.insert(Backend {
                 // TODO port addr
-                addr: SocketAddr::Inet(std::net::SocketAddr::new(addr.0.into(), 11111)),
+                addr: SocketAddr::Inet(std::net::SocketAddr::new(addr.0.into(), host_port.1)),
                 weight: 1,
                 ext: Extensions::new(),
             });
         }
 
-        let lb = {
-            let state = handle.0.state.lock().unwrap();
-            //state.backends.insert(hostname.clone(), backends.clone());
-            state
-                .service_backends
-                .get(&host_port)
-                .and_then(|lb| lb.upgrade())
-        };
+        // Send updated backends to watch
+        let has_changed = backends_sender.send_if_modified(|val| {
+            if val != &backends {
+                *val = backends;
+                true
+            } else {
+                false
+            }
+        });
 
-        let _ = backends_sender.send(backends);
+        if has_changed {
+            if let Some(lb) = handle_weak.upgrade() {
+                let _ = lb.load_balancer_round_robin.update().await;
+                let _ = lb.load_balancer_consistent.update().await;
+            }
+        }
 
-        if let Some(lb) = lb {
-            let _ = lb.load_balancer_round_robin.update().await;
-            let _ = lb.load_balancer_consistent.update().await;
-            let _ = ready_send.send(true);
-
-            // Sleep until TTL expire
-            tokio::time::sleep_until(response.valid_until().into()).await;
-        } else {
+        if handle_weak.strong_count() == 0 {
             // All references to lb gone, we stop refresh loop.
             break;
         }
+
+        let _ = ready_send.send(true);
+
+        let valid_sec = response
+            .valid_until()
+            .duration_since(Instant::now())
+            .as_secs();
+        log::debug!(
+            "got result for DNS `{}:{}` valid for {}s",
+            host_port.0,
+            host_port.1,
+            valid_sec
+        );
+
+        // Sleep until TTL expire
+        tokio::time::sleep_until(response.valid_until().into()).await;
     }
+
+    log::info!(
+        "stopped DNS discovery loop for `{}:{}`",
+        host_port.0,
+        host_port.1
+    );
 }
 
 #[async_trait::async_trait]
@@ -216,23 +250,5 @@ impl BackgroundService for Service {
                 }
             }
         }
-    }
-}
-
-#[derive(Debug, Clone)]
-struct DNSServiceDiscovery {
-    host_port: (String, u16),
-    backends: watch::Receiver<BTreeSet<Backend>>,
-    ready: watch::Receiver<bool>,
-}
-
-#[async_trait::async_trait]
-impl ServiceDiscovery for DNSServiceDiscovery {
-    async fn discover(&self) -> Result<(BTreeSet<Backend>, HashMap<u64, bool>), pingora::BError> {
-        // Wait for initial DNS query to complete
-        self.ready.clone().wait_for(|v| *v).await.unwrap();
-
-        let backends = self.backends.borrow().clone();
-        Ok((backends, HashMap::new()))
     }
 }

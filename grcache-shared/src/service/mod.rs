@@ -46,21 +46,13 @@ pub struct MethodSpec {
     pub cache_spec: Option<CacheSpec>,
 }
 
-fn foo(descr_set: &FileDescriptorSet) -> Result<(), anyhow::Error> {
-    let mut dyns = Vec::new();
-    for descr in descr_set.file.iter().cloned() {
-        dyns.push(FileDescriptor::new_dynamic(descr, &dyns)?);
-    }
-    Ok(())
-}
-
 impl MethodSpec {
     fn build(method: MethodDescriptor, mut validation_error: impl FnMut(ValidationError)) -> Self {
         let cache_spec = crate::protos::options::exts::grcache
             .get(&method.proto().options)
             .and_then(|opt| {
                 let mut success = true;
-                let mut hash_on: Vec<FieldRef> = Vec::new();
+                let hash_on: Vec<FieldRef> = Vec::new();
 
                 if opt.cache_ttl < 0 {
                     validation_error(ValidationError::InvalidCacheTTL {
@@ -69,24 +61,24 @@ impl MethodSpec {
                     success = false;
                 }
 
-                for field_ref_str in opt.hash_on.iter() {
-                    let field_ref = crate::field_ref::FieldRef::parse(field_ref_str);
-                    match field_ref {
-                        Ok(field_ref) => {
-                            // TODO validate field ref
-                            field_ref.validate(&method.input_type());
+                //for field_ref_str in opt.hash_on.iter() {
+                //    let field_ref = crate::field_ref::FieldRef::parse(field_ref_str);
+                //    match field_ref {
+                //        Ok(field_ref) => {
+                //            // TODO validate field ref
+                //            field_ref.validate(&method.input_type());
 
-                            hash_on.push(field_ref);
-                        }
-                        Err(parse_err) => {
-                            validation_error(ValidationError::HashOnInvalidFieldRef {
-                                field_ref: field_ref_str.into(),
-                                source: parse_err,
-                            });
-                            success = false;
-                        }
-                    }
-                }
+                //            hash_on.push(field_ref);
+                //        }
+                //        Err(parse_err) => {
+                //            validation_error(ValidationError::HashOnInvalidFieldRef {
+                //                field_ref: field_ref_str.into(),
+                //                source: parse_err,
+                //            });
+                //            success = false;
+                //        }
+                //    }
+                //}
 
                 if success {
                     Some(CacheSpec {
@@ -108,10 +100,19 @@ impl MethodSpec {
 
 pub struct ServiceSpec {
     pub name: QualifiedService,
+    pub passthrough: bool,
     pub methods: HashMap<String, MethodSpec>,
 }
 
 impl ServiceSpec {
+    pub fn build_passthrough(service: &QualifiedService) -> Self {
+        ServiceSpec {
+            name: service.clone(),
+            passthrough: true,
+            methods: HashMap::new(),
+        }
+    }
+
     pub fn build(
         descriptor_set: &FileDescriptorSet,
         service: &QualifiedService,
@@ -138,6 +139,7 @@ impl ServiceSpec {
 
         let service = ServiceSpec {
             name: service.clone(),
+            passthrough: false,
             methods,
         };
 

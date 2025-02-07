@@ -6,45 +6,45 @@ import "google/protobuf/descriptor.proto";
 //   optional string my_option = 58526;
 // }
 
-message EvictSpec {
-    // The name of an eviction event to evict by.
-    // Eviction events are specified in the `grcache` configuration.
-    // Names may be anything at all, but convention is to use `:` for
-    // namespacing.
-    // Example: `cdc:sales:completed`
-    string event = 1;
-
-    // For an explicit cache eviction to occur, the caching system
-    // needs to know the full key of the cache entries.
-    // This means that a mapping has to be done from every field in
-    // the request proto message to values the chosen eviction strategy
-    // knows about.
-    //
-    // By default, fields in the root of the request message are mapped
-    // directly to the same named argument to the eviction strategy.
-    // If this suffices, `evict_key_field` does not need to be provided
-    // at all.
-    //
-    // However, if naming differs, one or more `evict_key_field`s can be
-    // provided to specify a mapping from fields in the request message
-    // to eviction strategy arg names.
-    //
-    // ## Key name mapping lookup hierarchy
-    // When mapping fields from the request message, the following hierarchy
-    // is used:
-    // * TODO not implemented: Lookup is attempted the options set for the `message`
-    // * If not found, `rpc` options is checked
-    // * If not found and if in the root of the message (not nested), then
-    //   the name of the field in the request message is used directly
-    // * If the field is in a nested proto message, then an error is raised
-    //
-    // ## Strategy validation
-    // Eviction strategies are defined in the configuration files for `grcache`.
-    // You can perform a validation step with `grcache-cli`, which will print
-    // errors if the fields defined for an eviction strategy does not match
-    // up with the fields the strategy provides.
-    map<string, string> evict_key_field = 2;
-}
+// message EvictSpec {
+//     // The name of an eviction event to evict by.
+//     // Eviction events are specified in the `grcache` configuration.
+//     // Names may be anything at all, but convention is to use `:` for
+//     // namespacing.
+//     // Example: `cdc:sales:completed`
+//     string event = 1;
+//
+//     // For an explicit cache eviction to occur, the caching system
+//     // needs to know the full key of the cache entries.
+//     // This means that a mapping has to be done from every field in
+//     // the request proto message to values the chosen eviction strategy
+//     // knows about.
+//     //
+//     // By default, fields in the root of the request message are mapped
+//     // directly to the same named argument to the eviction strategy.
+//     // If this suffices, `evict_key_field` does not need to be provided
+//     // at all.
+//     //
+//     // However, if naming differs, one or more `evict_key_field`s can be
+//     // provided to specify a mapping from fields in the request message
+//     // to eviction strategy arg names.
+//     //
+//     // ## Key name mapping lookup hierarchy
+//     // When mapping fields from the request message, the following hierarchy
+//     // is used:
+//     // * TODO not implemented: Lookup is attempted the options set for the `message`
+//     // * If not found, `rpc` options is checked
+//     // * If not found and if in the root of the message (not nested), then
+//     //   the name of the field in the request message is used directly
+//     // * If the field is in a nested proto message, then an error is raised
+//     //
+//     // ## Strategy validation
+//     // Eviction strategies are defined in the configuration files for `grcache`.
+//     // You can perform a validation step with `grcache-cli`, which will print
+//     // errors if the fields defined for an eviction strategy does not match
+//     // up with the fields the strategy provides.
+//     map<string, string> evict_key_field = 2;
+// }
 
 message GrcacheMethodOptions {
     // When set to a non zero value, will enable caching for this
@@ -67,7 +67,7 @@ message GrcacheMethodOptions {
     // for stickiness hash.
     //
     // If no `hash_on` is specified, no stickiness guarantees are made.
-    repeated string hash_on = 2;
+    // repeated string hash_on = 2;
 
     // // A method may declare that it wishes to be explicitly evicted by one
     // // or many eviction events. Eviction events themselves are declared in
@@ -84,19 +84,19 @@ extend google.protobuf.MethodOptions {
     [retention = RETENTION_SOURCE];
 }
 
-message A {
-    int32 fetch_provider_id = 1;
-}
-
-service Foo {
-    rpc Bar(A) returns (A) {
-        option (grcache) = {
-            cache_ttl: 3600 // 1 hour
-            hash_on: "fetch_provider_id"
-            // evict_by: {
-            //     event: "explicit:a_changed"
-            // }
-            // evict_key_field { key: "fetch_provider_id" value: "provider_id" }
-        };
-    };
-}
+// message A {
+//     int32 fetch_provider_id = 1;
+// }
+//
+// service Foo {
+//     rpc Bar(A) returns (A) {
+//         option (grcache) = {
+//             cache_ttl: 3600 // 1 hour
+//             hash_on: "fetch_provider_id"
+//             // evict_by: {
+//             //     event: "explicit:a_changed"
+//             // }
+//             // evict_key_field { key: "fetch_provider_id" value: "provider_id" }
+//         };
+//     };
+// }

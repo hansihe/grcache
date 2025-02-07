@@ -39,12 +39,8 @@ fn main() {
 
     match args.command {
         Commands::ValidateCluster {} => todo!(),
-        Commands::Validate { descriptor_sets } => todo!(),
-        Commands::UploadDescriptors {
-            config,
-            bucket_id,
-            descriptor_set,
-        } => todo!(),
+        Commands::Validate { .. } => todo!(),
+        Commands::UploadDescriptors { .. } => todo!(),
         Commands::GenerateSchemas { out_dir } => {
             //fn write_json<T: Serialize>(out_dir: &Path, name: &str, value: T) {
             //    let mut path = PathBuf::new();

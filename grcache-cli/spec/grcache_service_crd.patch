@@ -1,0 +1,28 @@
+--- grcache_service_crd.yaml	2025-02-05 14:33:25
++++ grcache_service_crd_patched.yaml	2025-02-05 15:36:46
+@@ -5,15 +5,12 @@
+ spec:
+   group: hansihe.com
+   names:
+-    categories: []
+     kind: GrcacheService
+     plural: grcacheservices
+-    shortNames: []
+     singular: grcacheservice
+   scope: Namespaced
+   versions:
+-  - additionalPrinterColumns: []
+-    name: v1
++  - name: v1
+     schema:
+       openAPIV3Schema:
+         description: Auto-generated derived type for GrcacheServiceSpec via `CustomResource`
+@@ -104,8 +101,6 @@
+         - spec
+         title: GrcacheService
+         type: object
+-    selectableFields:
+-    - jsonPath: .spec.cluster
+     served: true
+     storage: true
+     subresources: {}

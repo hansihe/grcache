@@ -26,7 +26,8 @@ use crate::discovery::{self, ServiceBackendsHandle};
 
 #[derive(Clone)]
 pub struct ServiceData {
-    generation: usize,
+    // public for tests
+    pub generation: usize,
     pub service_spec: Option<Arc<ServiceSpec>>,
     pub load_balancer: Option<Arc<ServiceBackendsHandle>>,
 }
@@ -34,6 +35,47 @@ pub struct ServiceData {
 pub struct ServiceConfigInner {
     pub ready: watch::Receiver<bool>,
     pub services: papaya::HashMap<String, ServiceData>,
+}
+
+impl ServiceConfigInner {
+    /// Swap in new spec IF we are not already on a newer generation.
+    /// This prevents races.
+    fn update_service_if_newer(&self, service_name: String, data: ServiceData) {
+        let services_map = self.services.pin();
+        let result: Compute<_, _, ()> = services_map.compute(service_name.clone(), |kv| {
+            if let Some((_key, value)) = kv {
+                if value.generation < data.generation {
+                    // Old generation, replace value.
+                    papaya::Operation::Insert(data.clone())
+                } else {
+                    // We raced, abort.
+                    papaya::Operation::Abort(())
+                }
+            } else {
+                // No element in map, insert.
+                papaya::Operation::Insert(data.clone())
+            }
+        });
+
+        match result {
+            Compute::Inserted(k, _v) => {
+                log::info!(
+                    "loaded spec for gRPC service: {} has_descriptor: {}",
+                    k,
+                    !data.service_spec.as_ref().unwrap().passthrough
+                );
+            }
+            Compute::Updated { new: (k, _v), .. } => {
+                log::info!(
+                    "loaded updated spec for gRPC service: {} has_descriptor: {}",
+                    k,
+                    !data.service_spec.as_ref().unwrap().passthrough
+                );
+            }
+            Compute::Removed(_k, _v) => unreachable!(),
+            Compute::Aborted(_t) => (),
+        }
+    }
 }
 
 pub type ServiceConfig = Arc<ServiceConfigInner>;
@@ -104,7 +146,9 @@ struct ServiceConfigState {
 impl ServiceConfigState {
     fn remove(&mut self, object_ref: &ObjectRef<GrcacheService>) {
         if let Some(previous) = self.remove_noupdate(object_ref) {
-            self.update_service(&previous.spec.service_name);
+            //for name in previous.spec.service_names.iter() {
+            let name = &previous.spec.service_name;
+            self.update_service(name);
         }
     }
 
@@ -115,8 +159,10 @@ impl ServiceConfigState {
         let previous = self.raw_services.remove(object_ref);
 
         if let Some(previous) = &previous {
+            //for name in previous.spec.service_names.iter() {
+            let name = &previous.spec.service_name;
             self.ref_by_grpc_service
-                .get_mut(&previous.spec.service_name)
+                .get_mut(name)
                 .unwrap()
                 .remove(object_ref);
         }
@@ -129,13 +175,14 @@ impl ServiceConfigState {
         let object_ref = ObjectRef::from_obj(&object);
         self.remove_noupdate(&object_ref);
 
-        let grpc_service = object.spec.service_name.clone();
+        self.raw_services.insert(object_ref.clone(), object.clone());
 
+        //for grpc_service in object.spec.service_names.iter() {
+        let grpc_service = &object.spec.service_name;
         self.ref_by_grpc_service
-            .entry(object.spec.service_name.clone())
+            .entry(grpc_service.to_owned())
             .or_default()
             .insert(object_ref.clone());
-        self.raw_services.insert(object_ref, object);
 
         self.update_service(&grpc_service);
     }
@@ -144,9 +191,6 @@ impl ServiceConfigState {
         let objects = self.ref_by_grpc_service.get(grpc_service).unwrap();
 
         if objects.is_empty() {
-            let services = self.config.services.pin();
-            services.remove(grpc_service);
-
             let generation = self.spec_generation;
             self.spec_generation += 1;
 
@@ -159,6 +203,8 @@ impl ServiceConfigState {
                     load_balancer: None,
                 },
             );
+
+            log::info!("unloaded spec for gRPC service: {}", grpc_service);
         } else {
             // When we have duplicate objects, we select an object deterministically
             // so that `grcache` replicas behave identically.
@@ -186,9 +232,12 @@ impl ServiceConfigState {
             // TODO spec generation
             // Right now this is racy
 
-            let service_name = object.spec.service_name.clone();
+            let mut services = Vec::new();
+            //for service_name in object.spec.service_names.iter() {
+            let service_name = &object.spec.service_name;
             // TODO error
             let service = QualifiedService::parse(&service_name).unwrap();
+            services.push((service_name.to_owned(), service));
 
             let load_balancer = match &object.spec.upstream {
                 grcache_shared::config::crd::Upstream::Dns { url, port } => {
@@ -210,56 +259,38 @@ impl ServiceConfigState {
                         .await
                         .unwrap();
 
-                    // TODO error
-                    let (spec, _validation_errors) =
-                        ServiceSpec::build(&descriptor_set, &service).unwrap();
-                    let spec = Arc::new(spec);
+                    for (service_name, service) in services.iter() {
+                        // TODO error
+                        let (spec, _validation_errors) =
+                            ServiceSpec::build(&descriptor_set, &service).unwrap();
+                        let spec = Arc::new(spec);
 
-                    // Swap in new spec IF we are not already on a newer generation.
-                    // This prevents races.
-                    let services_map = config.services.pin();
-                    let result: Compute<_, _, ()> = services_map.compute(service_name, |kv| {
-                        if let Some((_key, value)) = kv {
-                            if value.generation < generation {
-                                // Old generation, replace value.
-                                papaya::Operation::Insert(ServiceData {
-                                    generation,
-                                    service_spec: Some(spec.clone()),
-                                    load_balancer: Some(load_balancer.clone()),
-                                })
-                            } else {
-                                // We raced, abort.
-                                papaya::Operation::Abort(())
-                            }
-                        } else {
-                            // No element in map, insert.
-                            papaya::Operation::Insert(ServiceData {
-                                generation,
-                                service_spec: Some(spec.clone()),
-                                load_balancer: Some(load_balancer.clone()),
-                            })
-                        }
-                    });
+                        let service_data = ServiceData {
+                            generation,
+                            service_spec: Some(spec.clone()),
+                            load_balancer: Some(load_balancer.clone()),
+                        };
 
-                    match result {
-                        Compute::Inserted(k, _v) => {
-                            log::info!("loaded spec for gRPC service: {}", k);
-                        }
-                        Compute::Updated { new: (k, _v), .. } => {
-                            log::info!("loaded updated spec for gRPC service: {}", k);
-                        }
-                        Compute::Removed(_k, _v) => unreachable!(),
-                        Compute::Aborted(_t) => (),
+                        config.update_service_if_newer(service_name.to_owned(), service_data);
                     }
 
                     // TODO mark as ready
                 });
             } else {
-                // TODO load empty spec
-                log::info!(
-                    "TODO loaded spec (no descriptor) for gRPC service: {}",
-                    grpc_service
-                );
+                for (_service_name, service) in services.iter() {
+                    let spec = ServiceSpec::build_passthrough(service);
+                    let spec = Arc::new(spec);
+
+                    let service_data = ServiceData {
+                        generation,
+                        service_spec: Some(spec.clone()),
+                        load_balancer: Some(load_balancer.clone()),
+                    };
+
+                    self.config
+                        .update_service_if_newer(service_name.to_owned(), service_data);
+                }
+
                 // TODO mark as ready
             }
         }
@@ -273,7 +304,7 @@ impl BackgroundService for K8SConfigService {
             .await
             .expect("failed to create kubernetes client");
 
-        let nodes: Api<GrcacheService> = Api::all(k8s_client.clone());
+        let nodes: Api<GrcacheService> = Api::default_namespaced(k8s_client.clone());
 
         // TODO pull from config
         // TODO filter by cluster
@@ -305,12 +336,12 @@ impl BackgroundService for K8SConfigService {
                         },
                         Some(Ok(ResourceChange::Apply(object))) => {
                             let object_ref = ObjectRef::from_obj(&object);
-                            log::info!("k8s service spec watch apply: {:?}", object_ref);
+                            log::info!("k8s service spec watch apply: {:?}", object_ref.name);
                             state.apply(object);
 
                         },
                         Some(Ok(ResourceChange::Delete(object_ref))) => {
-                            log::info!("k8s service spec watch delete: {:?}", object_ref);
+                            log::info!("k8s service spec watch delete: {:?}", object_ref.name);
                             state.remove(&object_ref);
                         },
                         Some(Err(err)) => {
@@ -325,40 +356,3 @@ impl BackgroundService for K8SConfigService {
         }
     }
 }
-
-//pub async fn start(client: Client) {
-//    let nodes: Api<GrcacheService> = Api::all(client);
-//
-//    // TODO pull from config
-//    let node_filter = watcher::Config::default().fields("cluster=default");
-//
-//    let watcher = watcher(nodes, node_filter);
-//    let mut changes = pin!(resource_changes(watcher.default_backoff()));
-//
-//    loop {
-//        select! {
-//            change = changes.next() => {
-//                match change {
-//                    Some(Ok(ResourceChange::Ready)) => todo!(),
-//                    Some(Ok(ResourceChange::Apply(resource))) => todo!(),
-//                    Some(Ok(ResourceChange::Delete(resource_id))) => todo!(),
-//                    Some(Err(err)) => {
-//                        log::error!("got error in service CRD watcher: {:?}, retrying..", err);
-//                    },
-//                    None => {
-//                        unreachable!("changes stream exited!");
-//                    },
-//                }
-//            }
-//        }
-//    }
-//
-//    //changes
-//    //    .for_each(|v| async {
-//    //        // todo
-//    //        ()
-//    //    })
-//    //    .await;
-//
-//    //unreachable!("changes stream exited!");
-//}

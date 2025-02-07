@@ -1,8 +1,8 @@
-use std::{any::Any, future::Future, ops::Deref, sync::Arc};
+use std::{any::Any, sync::Arc};
 
 use bb8::Pool;
 use bb8_redis::{redis::AsyncCommands, RedisConnectionManager};
-use bytes::{BufMut, BytesMut};
+use bytes::BufMut;
 use pingora::{
     cache::{
         key::{CacheHashKey, CompactCacheKey},
@@ -141,6 +141,7 @@ impl Storage for RedisReplicasCacheBackend {
         let pool = match self.pools.pool_for_hash(&hash[..]).await {
             Some(pool) => pool,
             None => {
+                log::warn!("not caching, no available pool!");
                 // No pool available, do not fetch.
                 return Ok(None);
             }
@@ -165,6 +166,7 @@ impl Storage for RedisReplicasCacheBackend {
         let data = match data_opt {
             Some(data) => data,
             None => {
+                log::info!("cache miss, no key in redis");
                 // Cache miss
                 return Ok(None);
             }
@@ -292,12 +294,20 @@ impl BackgroundService for Service {
             changed_handler.changed().await.unwrap();
             let backends = changed_handler.borrow().clone();
 
-            self.pools.pools.pin().retain(|k, _v| backends.contains(k));
+            self.pools.pools.pin().retain(|k, _v| {
+                let retain = backends.contains(k);
+                if !retain {
+                    log::info!("removing \"{}\" redis replica", k.as_inet().unwrap());
+                }
+                retain
+            });
 
             for backend in backends.iter() {
                 if !self.pools.pools.pin().contains_key(backend) {
                     // We should never really have a UDS here
                     let inet_addr = backend.as_inet().unwrap();
+
+                    log::info!("adding \"{}\" redis replica", inet_addr);
 
                     let url_str = format!("redis://{}", inet_addr);
                     // Format should always be correct since we construct it

@@ -42,14 +42,14 @@ pub struct GrcacheServiceSpec {
     /// Declares how upstreams are resolved for this service.
     pub upstream: Upstream,
 
-    /// The name of the gRPC service.
+    /// The name(s) of the gRPC service(s) provided by the upstream.
     /// This should match the name of the gRPC service specified in your
     /// proto file, including the full package path.
     /// When making a request to the grcache proxy, `service_name` +
     /// optionally `upstream_name` will decide which upstream server
     /// this request goes to.
     pub service_name: String,
-
+    //pub service_names: Vec<String>,
     /// Caching config for RPC methods are declared inline in the proto
     /// files. In order to be able to cache, we need the descriptors for
     /// the protos which contain the service.

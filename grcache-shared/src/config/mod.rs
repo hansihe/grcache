@@ -25,6 +25,27 @@ pub struct Config {
     /// When running in a kubernetes setting, the kubernetes
     /// integration would likely be used instead.
     eviction_events: Vec<EvictionEventConfig>,
+
+    cache_backend: CacheBackend,
+}
+
+fn default_redis_port() -> u16 {
+    6379
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub enum CacheBackend {
+    RedisReplicas {
+        /// The hostname used to discover Redis instances used
+        /// for caching.
+        /// This hostname should resolve to several IPs, each of
+        /// which will be used as a cache shard. Consistent hashing
+        /// will be used to distribute hash keys across the instances.
+        hostname: String,
+        #[serde(default = "default_redis_port")]
+        port: u16,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]

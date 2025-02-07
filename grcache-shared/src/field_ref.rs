@@ -23,7 +23,7 @@ impl FieldRef {
         Ok(FieldRef { components })
     }
 
-    pub fn validate(&self, descriptor: &MessageDescriptor) {
+    pub fn validate(&self, _descriptor: &MessageDescriptor) {
         // TODO
     }
 }
