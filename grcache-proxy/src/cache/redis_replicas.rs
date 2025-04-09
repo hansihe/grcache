@@ -3,6 +3,7 @@ use std::{any::Any, sync::Arc};
 use bb8::Pool;
 use bb8_redis::{redis::AsyncCommands, RedisConnectionManager};
 use bytes::BufMut;
+use grcache_shared::health::HealthEndpoint;
 use pingora::{
     cache::{
         key::{CacheHashKey, CompactCacheKey},
@@ -19,21 +20,48 @@ use url::Url;
 
 use crate::discovery::{self, ServiceBackendsHandle};
 
+use super::GrcacheStorage;
+
 pub struct RedisReplicasCacheBackend {
     pools: Arc<RedisPools>,
 }
 
 impl RedisReplicasCacheBackend {
-    pub fn new(discovery: Arc<ServiceBackendsHandle>) -> (Service, Self) {
+    pub fn new(
+        discovery: Arc<ServiceBackendsHandle>,
+        mut health: HealthEndpoint,
+    ) -> (Service, Self) {
+        health.name("redis backend service discovery");
+
         let pools = Arc::new(RedisPools {
             backends: discovery,
             pools: Default::default(),
+            health,
         });
+
+        // Spawn readiness task.
+        // The only job this task is for wait for service
+        // discovery readiness for the cluster, signal ready
+        // then exit.
+        {
+            let pools = pools.clone();
+            tokio::spawn(async move {
+                // Because this is readiness, we never timeout
+                // and mark as ready unless we successfully
+                // complete discovery.
+                let mut discovery_ready = pools.backends.ready.clone();
+                discovery_ready.wait_for(|v| *v).await.unwrap();
+
+                pools.health.ready();
+            });
+        }
 
         let cache_backend = RedisReplicasCacheBackend {
             pools: pools.clone(),
         };
+
         let service = Service { pools };
+
         (service, cache_backend)
     }
 }
@@ -126,6 +154,12 @@ impl HandleMiss for RedisCacheMiss {
 struct CacheData {
     cache_meta: (Vec<u8>, Vec<u8>),
     data: bytes::Bytes,
+}
+
+impl GrcacheStorage for RedisReplicasCacheBackend {
+    fn as_storage(&self) -> &(dyn Storage + Sync) {
+        self
+    }
 }
 
 #[async_trait::async_trait]
@@ -247,6 +281,7 @@ pub struct RedisPools {
     backends: Arc<discovery::ServiceBackendsHandle>,
     /// Connection pools maintained by dedicated task.
     pools: papaya::HashMap<Backend, bb8::Pool<bb8_redis::RedisConnectionManager>>,
+    health: HealthEndpoint,
 }
 
 impl RedisPools {

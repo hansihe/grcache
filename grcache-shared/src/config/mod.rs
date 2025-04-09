@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::BTreeSet;
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -8,26 +8,73 @@ pub mod crd;
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
-pub struct Config {
+pub struct ConfigFile {
     /// Configuration for kubernetes integration.
-    /// Disabled by default.
-    kubernetes: Option<KubernetesConfig>,
+    pub kubernetes: KubernetesConfig,
 
-    /// Configuration for any number of S3 buckets.
-    buckets: HashMap<String, BucketConfig>,
+    /// Select the active caching backend.
+    pub cache_backend: CacheBackend,
 
-    /// Inline declaration for a number of protobuf descriptor
-    /// sets. When running in a kubernetes setting, the kubernetes
-    /// integration would likely be used instead.
-    protobuf_descriptor_sets: Vec<ProtobufDescriptorSetConfig>,
+    pub proxy: ProxyConfig,
 
-    /// Inline declaration for a number of eviction events.
-    /// When running in a kubernetes setting, the kubernetes
-    /// integration would likely be used instead.
-    eviction_events: Vec<EvictionEventConfig>,
-
-    cache_backend: CacheBackend,
+    pub tracing: Option<TracingConfig>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct TracingConfig {
+    /// Imports and exports trace information from
+    /// datadog headers.
+    pub datadog_propagator: bool,
+
+    /// Imports and exports trace information from
+    /// opentelemetry headers.
+    pub opentelemetry_propagator: bool,
+
+    pub exporter: TracingExporterConfig,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub enum TracingExporterConfig {
+    Otlp {},
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ProxyConfig {
+    /// HTTP headers for gRPC requests are put into 3 categories:
+    /// * Vary headers. These are considered as part of the cache
+    ///   key, and are passed to the upstream service.
+    /// * Propagation headers. The headers specified here are
+    ///   passed to the upstream service, but are not considered
+    ///   as part of the cache key. Things like telemetry
+    ///   propagation headers would be listed here.
+    /// * All other headers. These are stripped to prevent cache leaks.
+    ///
+    /// Telemetry headers do not need to be specified in this map
+    /// if telemetry propagation is enabled.
+    pub propagation_headers: BTreeSet<String>,
+}
+
+//#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+//#[serde(rename_all = "camelCase")]
+//pub struct Config {
+//    /// Configuration for any number of S3 buckets.
+//    buckets: HashMap<String, BucketConfig>,
+//
+//    /// Inline declaration for a number of protobuf descriptor
+//    /// sets. When running in a kubernetes setting, the kubernetes
+//    /// integration would likely be used instead.
+//    protobuf_descriptor_sets: Vec<ProtobufDescriptorSetConfig>,
+//
+//    /// Inline declaration for a number of eviction events.
+//    /// When running in a kubernetes setting, the kubernetes
+//    /// integration would likely be used instead.
+//    eviction_events: Vec<EvictionEventConfig>,
+//
+//    cache_backend: CacheBackend,
+//}
 
 fn default_redis_port() -> u16 {
     6379
@@ -58,19 +105,18 @@ pub struct KubernetesConfig {
     /// * Load model from instances of the
     ///   `GrcacheModel` CRD.
     /// * Disallow inline declarations of the two above.
-    enable: bool,
-
-    /// This setting makes it possible to use multiple grcache
-    /// clusters within a single k8s namespace. grcache instances
-    /// will only pick up k8s resources with this `clusterName`
-    /// set on them.
-    cluster_name: Option<String>,
-
-    /// Internal option, here be dragons.
-    /// Will allow inline resource declarations while k8s integration
-    /// is active.
-    #[cfg(feature = "internal")]
-    internal_allow_inline_resources: bool,
+    pub enable: bool,
+    // /// This setting makes it possible to use multiple grcache
+    // /// clusters within a single k8s namespace. grcache instances
+    // /// will only pick up k8s resources with this `clusterName`
+    // /// set on them.
+    // pub cluster_name: Option<String>,
+    //
+    // /// Internal option, here be dragons.
+    // /// Will allow inline resource declarations while k8s integration
+    // /// is active.
+    // #[cfg(feature = "internal")]
+    // internal_allow_inline_resources: bool,
 }
 
 /// Configuration for a single S3 bucket.

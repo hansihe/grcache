@@ -10,6 +10,7 @@ use tokio::{select, sync::watch};
 
 use grcache_shared::{
     config::crd::GrcacheService,
+    health::HealthEndpoint,
     resource_change::{resource_changes, ResourceChange},
     service::{
         descriptor_set::{self, DummyPanicContext},
@@ -114,10 +115,16 @@ pub struct K8SConfigService {
     dns_service_handle: discovery::dns::Handle,
     ready_sender: watch::Sender<bool>,
     config: ServiceConfig,
+    health: HealthEndpoint,
 }
 
 impl K8SConfigService {
-    pub fn new(dns_service_handle: discovery::dns::Handle) -> (Self, ServiceConfig) {
+    pub fn new(
+        dns_service_handle: discovery::dns::Handle,
+        mut health: HealthEndpoint,
+    ) -> (Self, ServiceConfig) {
+        health.name("kubernetes GrcacheService loader");
+
         let (ready_sender, ready_receiver) = watch::channel(false);
 
         let config = Arc::new(ServiceConfigInner {
@@ -129,6 +136,7 @@ impl K8SConfigService {
             dns_service_handle,
             ready_sender,
             config: config.clone(),
+            health,
         };
 
         (service, config)
@@ -333,6 +341,7 @@ impl BackgroundService for K8SConfigService {
 
                             // TODO also wait for service discovery
                             let _ = self.ready_sender.send(true);
+                            self.health.ready();
                         },
                         Some(Ok(ResourceChange::Apply(object))) => {
                             let object_ref = ObjectRef::from_obj(&object);

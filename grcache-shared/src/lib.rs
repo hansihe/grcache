@@ -18,6 +18,11 @@ pub mod resource_change;
 
 pub mod proto;
 
+#[cfg(feature = "test_util")]
+pub mod test;
+
+pub mod health;
+
 pub use protobuf::MessageDyn;
 
 pub mod protos {

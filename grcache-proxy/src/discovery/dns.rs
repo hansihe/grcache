@@ -98,16 +98,18 @@ impl Handle {
 pub struct Service {
     handle: Handle,
     commands: std::sync::Mutex<Option<UnboundedReceiver<Command>>>,
+    resolver: Arc<TokioAsyncResolver>,
 }
 
 impl Service {
-    pub fn new() -> (Service, Handle) {
+    pub fn new(resolver: Arc<TokioAsyncResolver>) -> (Service, Handle) {
         let (commands_sender, commands_receiver) = unbounded_channel();
         let handle = Handle::new(commands_sender);
         (
             Service {
                 handle: handle.clone(),
                 commands: std::sync::Mutex::new(Some(commands_receiver)),
+                resolver,
             },
             handle.clone(),
         )
@@ -217,9 +219,6 @@ async fn dns_discovery_loop(
 impl BackgroundService for Service {
     async fn start(&self, _shutdown: ShutdownWatch) {
         let mut commands = self.commands.try_lock().unwrap().take().unwrap();
-        let resolver = Arc::new(
-            TokioAsyncResolver::tokio_from_system_conf().expect("failed to create DNS resolver"),
-        );
 
         log::info!("DNS discovery service started");
 
@@ -236,7 +235,7 @@ impl BackgroundService for Service {
                     ready_send,
                     backends_sender,
                 } => {
-                    let resolver = resolver.clone();
+                    let resolver = self.resolver.clone();
                     let handle = self.handle.clone();
 
                     // Spawn task to handle the discovery loop
